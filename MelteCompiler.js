@@ -203,7 +203,12 @@ SvelteCompiler = class SvelteCompiler extends CachingCompiler {
       file.addJavaScript({
         path: file.getPathInPackage()
       }, async () => {
-        const { js, css } = await getResult();
+        const result = await getResult();
+
+        let js, css;
+        if (result) {
+          ({ js, css } = result);
+        }
 
         if (css) {
           file.addStylesheet(css);
@@ -372,7 +377,7 @@ SvelteCompiler = class SvelteCompiler extends CachingCompiler {
       })));
     } catch (e) {
       let err = { message: e.message };
-
+      
       if (e.loc) {
         err.line = e.loc.line;
         err.column = e.loc.column;
@@ -386,7 +391,8 @@ SvelteCompiler = class SvelteCompiler extends CachingCompiler {
       try {
         code = await this.preprocess(code, file);
       } catch (e) {
-        file.error(e);
+        let err = this._convertError(e);
+        file.error(err);
         return;
       }
     }
@@ -398,7 +404,8 @@ SvelteCompiler = class SvelteCompiler extends CachingCompiler {
         compiledResult.js.map = this.combineSourceMaps(map, compiledResult.js.map);
       }
     } catch (e) {
-      file.error(e);
+      let err = this._convertError(e);
+      file.error(err);
       return;
     }
 
@@ -443,30 +450,14 @@ SvelteCompiler = class SvelteCompiler extends CachingCompiler {
         css
       }
     } catch (e) {
+      console.log('CCOmpile4', e)
       // Throw unknown errors.
       if (!e.start) {
         throw e;
       }
 
-      let message;
-
-      if (e.frame) {
-        // Prepend a vertical bar to each line to prevent Meteor from trimming
-        // whitespace and moving the code frame indicator to the wrong position.
-        const frame = e.frame.split('\n').map(line => {
-          return `| ${line}`;
-        }).join('\n');
-
-        message = `${e.message}\n\n${frame}`;
-      } else {
-        message = e.message;
-      }
-
-      file.error({
-        message,
-        line: e.start.line,
-        column: e.start.column
-      });
+      let err = this._convertError(e);
+      file.error(err);
     }
   }
 
@@ -542,6 +533,28 @@ SvelteCompiler = class SvelteCompiler extends CachingCompiler {
     }
 
     return result.toJSON();
+  }
+
+  _convertError(e) {
+    let message;
+
+    if (e.frame) {
+      // Prepend a vertical bar to each line to prevent Meteor from trimming
+      // whitespace and moving the code frame indicator to the wrong position.
+      const frame = e.frame.split('\n').map(line => {
+        return `| ${line}`;
+      }).join('\n');
+
+      message = `${e.message}\n\n${frame}`;
+    } else {
+      message = e.message;
+    }
+
+    return {
+      message,
+      line: e.start.line,
+      column: e.start.column
+    };
   }
 };
 
